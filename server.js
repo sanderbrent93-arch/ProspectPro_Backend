@@ -89,12 +89,12 @@ app.delete('/api/contacts/:key', (req, res) => {
 app.get('/api/enrollments', (req, res) => {
   res.json(db.prepare('SELECT * FROM enrollments').all().map(r => ({
     ...r,
-    completed_steps: JSON.parse(r.completed_steps),
+    completed_steps: JSON.parse(r.completed_steps || '[]'),
   })));
 });
 
 app.post('/api/enroll', (req, res) => {
-  const { contacts, sequenceId, sequences } = req.body;
+  const { contacts, sequenceId, sequences, stepSchedule, customizations } = req.body;
   // Upsert sequence definition so scheduler has it
   if (sequences) {
     const upsertSeq = db.prepare(`INSERT OR REPLACE INTO sequences (id, name, description, steps_json) VALUES (?,?,?,?)`);
@@ -108,25 +108,36 @@ app.post('/api/enroll', (req, res) => {
   const step0    = steps[0] || {};
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const upsert = db.prepare(`INSERT OR REPLACE INTO enrollments
-    (contact_key, sequence_id, enrolled_at, current_step, next_due_at, next_due_time, completed_steps, status)
-    VALUES (?,?,?,0,?,?,?,?)`);
+  // Use pre-set schedule if provided by the frontend, else compute from daysAfterPrev
+  const firstDate = stepSchedule?.[0]?.date || addDays(todayStr, step0.daysAfterPrev || 0);
+  const firstTime = stepSchedule?.[0]?.time || step0.sendTime || '09:00';
 
-  const daysDelay = step0.daysAfterPrev || 0;
-  const dueDate   = addDays(todayStr, daysDelay);
+  const schedJson = stepSchedule ? JSON.stringify(stepSchedule) : null;
+  const custJson  = customizations ? JSON.stringify(customizations) : null;
+
+  const upsert = db.prepare(`INSERT OR REPLACE INTO enrollments
+    (contact_key, sequence_id, enrolled_at, current_step, next_due_at, next_due_time, completed_steps, status, step_schedule_json, customizations_json)
+    VALUES (?,?,?,0,?,?,?,?,?,?)`);
 
   const enrollAll = db.transaction(cs => {
     cs.forEach(c => {
-      // Upsert contact
       db.prepare(`INSERT OR REPLACE INTO contacts (key,first_name,last_name,entity,email,phone,mail,list_id)
                   VALUES (?,?,?,?,?,?,?,?)`)
         .run(c.key, c.firstName, c.lastName, c.entity, c.email, c.phone, c.mail, c.listId);
-      upsert.run(c.key, sequenceId, todayStr, dueDate, step0.sendTime || '09:00', '[]', 'active');
+      upsert.run(c.key, sequenceId, todayStr, firstDate, firstTime, '[]', 'active', schedJson, custJson);
     });
   });
   enrollAll(contacts);
 
   res.json({ ok: true, enrolled: contacts.length });
+});
+
+app.post('/api/mark-responded', (req, res) => {
+  const { key } = req.body;
+  if (!key) return res.status(400).json({ error: 'contact key required' });
+  db.prepare("UPDATE enrollments SET status='responded', responded_at=? WHERE contact_key=? AND status='active'")
+    .run(new Date().toISOString(), key);
+  res.json({ ok: true });
 });
 
 app.post('/api/unenroll', (req, res) => {

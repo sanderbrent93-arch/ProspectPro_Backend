@@ -40,14 +40,17 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS enrollments (
-    contact_key     TEXT PRIMARY KEY,
-    sequence_id     TEXT NOT NULL,
-    enrolled_at     TEXT NOT NULL,
-    current_step    INTEGER NOT NULL DEFAULT 0,
-    next_due_at     TEXT NOT NULL,
-    next_due_time   TEXT NOT NULL DEFAULT '09:00',
-    completed_steps TEXT NOT NULL DEFAULT '[]',
-    status          TEXT NOT NULL DEFAULT 'active'
+    contact_key          TEXT PRIMARY KEY,
+    sequence_id          TEXT NOT NULL,
+    enrolled_at          TEXT NOT NULL,
+    current_step         INTEGER NOT NULL DEFAULT 0,
+    next_due_at          TEXT NOT NULL,
+    next_due_time        TEXT NOT NULL DEFAULT '09:00',
+    completed_steps      TEXT NOT NULL DEFAULT '[]',
+    status               TEXT NOT NULL DEFAULT 'active',
+    responded_at         TEXT,
+    step_schedule_json   TEXT,
+    customizations_json  TEXT
   );
 
   CREATE TABLE IF NOT EXISTS send_log (
@@ -61,5 +64,10 @@ db.exec(`
     error        TEXT
   );
 `);
+
+// Migrate existing DBs — safe to run every startup
+try { db.exec(`ALTER TABLE enrollments ADD COLUMN responded_at TEXT`); } catch(_) {}
+try { db.exec(`ALTER TABLE enrollments ADD COLUMN step_schedule_json TEXT`); } catch(_) {}
+try { db.exec(`ALTER TABLE enrollments ADD COLUMN customizations_json TEXT`); } catch(_) {}
 
 module.exports = db;
