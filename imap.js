@@ -6,11 +6,17 @@ async function checkReplies() {
   const gmailPass = db.prepare("SELECT value FROM settings WHERE key='gmailAppPassword'").get()?.value;
   if (!gmailUser || !gmailPass) return;
 
+  // Only check contacts we've actually sent at least one email to
   const rows = db.prepare(`
-    SELECT e.contact_key, c.email
+    SELECT DISTINCT e.contact_key, c.email
     FROM enrollments e
     JOIN contacts c ON c.key = e.contact_key
-    WHERE e.status = 'active' AND c.email IS NOT NULL AND c.email != ''
+    WHERE e.status = 'active'
+      AND c.email IS NOT NULL AND c.email != ''
+      AND EXISTS (
+        SELECT 1 FROM send_log sl
+        WHERE sl.contact_key = e.contact_key AND sl.status = 'sent'
+      )
   `).all();
 
   if (!rows.length) return;
