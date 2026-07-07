@@ -34,7 +34,7 @@ function applyMerge(text, contact) {
 }
 
 async function sendEmail(contact, template) {
-  const { transporter, from } = getTransporter();
+  const { transporter, from, replyTo } = getTransporter();
 
   const subject = applyMerge(template.subject, contact);
   const body    = applyMerge(template.body,    contact);

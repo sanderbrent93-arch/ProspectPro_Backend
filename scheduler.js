@@ -54,6 +54,34 @@ async function processDue() {
       } catch (_) {}
     }
 
+    // Skip if already sent successfully for this step (idempotency guard)
+    const alreadySent = db.prepare(
+      "SELECT 1 FROM send_log WHERE contact_key=? AND sequence_id=? AND step_index=? AND status='sent'"
+    ).get(enrollment.contact_key, enrollment.sequence_id, enrollment.current_step);
+
+    if (alreadySent) {
+      // Step was sent but enrollment wasn't advanced — fix it now
+      const nextStep  = enrollment.current_step + 1;
+      const completed = JSON.parse(enrollment.completed_steps);
+      if (nextStep >= steps.length) {
+        db.prepare("UPDATE enrollments SET status='completed', completed_steps=? WHERE contact_key=?")
+          .run(JSON.stringify(completed), enrollment.contact_key);
+      } else {
+        const nextS = steps[nextStep];
+        let nextDate = addDays(todayISO(), nextS.daysAfterPrev || 0);
+        let nextTime = nextS.sendTime || '09:00';
+        if (enrollment.step_schedule_json) {
+          try {
+            const sched = JSON.parse(enrollment.step_schedule_json);
+            if (sched[nextStep]) { nextDate = sched[nextStep].date || nextDate; nextTime = sched[nextStep].time || nextTime; }
+          } catch (_) {}
+        }
+        db.prepare(`UPDATE enrollments SET current_step=?, next_due_at=?, next_due_time=?, completed_steps=? WHERE contact_key=?`)
+          .run(nextStep, nextDate, nextTime, JSON.stringify(completed), enrollment.contact_key);
+      }
+      continue;
+    }
+
     let status = 'sent', error = null;
     try {
       await sendEmail(contact, template);
