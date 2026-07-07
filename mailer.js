@@ -2,9 +2,10 @@ const nodemailer = require('nodemailer');
 const db = require('./db');
 
 function getTransporter() {
-  const gmailUser = process.env.GMAIL_USER || getSetting('gmailUser');
-  const gmailPass = process.env.GMAIL_APP_PASSWORD || getSetting('gmailAppPassword');
-  const senderName = process.env.SENDER_NAME || getSetting('senderName') || 'Mako Solar & Exterior Cleaning';
+  const gmailUser  = process.env.GMAIL_USER         || getSetting('gmailUser');
+  const gmailPass  = process.env.GMAIL_APP_PASSWORD  || getSetting('gmailAppPassword');
+  const senderName = process.env.SENDER_NAME         || getSetting('senderName') || 'Mako Solar & Exterior Cleaning';
+  const replyTo    = process.env.REPLY_TO_EMAIL      || getSetting('replyToEmail') || 'contact@makoclean.com';
 
   if (!gmailUser || !gmailPass) throw new Error('Gmail credentials not configured');
 
@@ -14,6 +15,7 @@ function getTransporter() {
       auth: { user: gmailUser, pass: gmailPass },
     }),
     from: `"${senderName}" <${gmailUser}>`,
+    replyTo,
   };
 }
 
@@ -39,6 +41,7 @@ async function sendEmail(contact, template) {
 
   await transporter.sendMail({
     from,
+    replyTo,
     to:      `${contact.first_name || ''} ${contact.last_name || ''} <${contact.email}>`.trim(),
     subject,
     text: body,
