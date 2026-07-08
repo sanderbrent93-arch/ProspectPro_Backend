@@ -5,8 +5,10 @@ const { checkReplies } = require('./imap');
 
 function isDue(nextDueAt, nextDueTime) {
   const [h, m] = (nextDueTime || '09:00').split(':').map(Number);
-  const due = new Date(`${nextDueAt}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
-  return new Date() >= due;
+  const scheduled = `${nextDueAt}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
+  // Compare wall-clock times both in America/Los_Angeles (handles PST/PDT automatically)
+  const nowLA = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  return nowLA >= new Date(scheduled);
 }
 
 function addDays(isoDate, days) {
