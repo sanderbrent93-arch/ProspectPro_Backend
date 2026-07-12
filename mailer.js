@@ -16,10 +16,10 @@ function applyMerge(text, contact) {
 }
 
 async function sendEmail(contact, template) {
-  const apiKey    = process.env.RESEND_API_KEY || getSetting('resendApiKey');
-  const fromEmail = process.env.FROM_EMAIL     || getSetting('fromEmail')     || 'contact@makoclean.com';
-  const fromName  = process.env.SENDER_NAME    || getSetting('senderName')    || 'Mako Solar & Exterior Cleaning';
-  const replyTo   = process.env.REPLY_TO_EMAIL || getSetting('replyToEmail')  || fromEmail;
+  const apiKey     = process.env.RESEND_API_KEY || getSetting('resendApiKey');
+  const senderName = process.env.SENDER_NAME    || getSetting('senderName') || 'Mako Solar & Exterior Cleaning';
+  const fromEmail  = process.env.FROM_EMAIL     || getSetting('fromEmail')  || 'contact@makoclean.com';
+  const replyTo    = process.env.REPLY_TO_EMAIL || getSetting('replyToEmail') || 'contact@makoclean.com';
 
   if (!apiKey) throw new Error('Resend API key not configured');
 
@@ -27,16 +27,18 @@ async function sendEmail(contact, template) {
 
   const subject = applyMerge(template.subject, contact);
   const body    = applyMerge(template.body,    contact);
-  const toName  = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.entity || '';
+  const toName  = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
 
-  await resend.emails.send({
-    from:     `${fromName} <${fromEmail}>`,
+  const { error } = await resend.emails.send({
+    from:     `${senderName} <${fromEmail}>`,
     reply_to: replyTo,
     to:       toName ? `${toName} <${contact.email}>` : contact.email,
     subject,
-    text:     body,
-    html:     body.replace(/\n/g, '<br>'),
+    text: body,
+    html: body.replace(/\n/g, '<br>'),
   });
+
+  if (error) throw new Error(error.message);
 }
 
 module.exports = { sendEmail, getSetting };
