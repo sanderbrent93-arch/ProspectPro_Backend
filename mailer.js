@@ -1,23 +1,5 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const db = require('./db');
-
-function getTransporter() {
-  const gmailUser  = process.env.GMAIL_USER         || getSetting('gmailUser');
-  const gmailPass  = process.env.GMAIL_APP_PASSWORD  || getSetting('gmailAppPassword');
-  const senderName = process.env.SENDER_NAME         || getSetting('senderName') || 'Mako Solar & Exterior Cleaning';
-  const replyTo    = process.env.REPLY_TO_EMAIL      || getSetting('replyToEmail') || 'contact@makoclean.com';
-
-  if (!gmailUser || !gmailPass) throw new Error('Gmail credentials not configured');
-
-  return {
-    transporter: nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: gmailUser, pass: gmailPass },
-    }),
-    from: `"${senderName}" <${gmailUser}>`,
-    replyTo,
-  };
-}
 
 function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -34,18 +16,26 @@ function applyMerge(text, contact) {
 }
 
 async function sendEmail(contact, template) {
-  const { transporter, from, replyTo } = getTransporter();
+  const apiKey    = process.env.RESEND_API_KEY || getSetting('resendApiKey');
+  const fromEmail = process.env.FROM_EMAIL     || getSetting('fromEmail')     || 'contact@makoclean.com';
+  const fromName  = process.env.SENDER_NAME    || getSetting('senderName')    || 'Mako Solar & Exterior Cleaning';
+  const replyTo   = process.env.REPLY_TO_EMAIL || getSetting('replyToEmail')  || fromEmail;
+
+  if (!apiKey) throw new Error('Resend API key not configured');
+
+  const resend = new Resend(apiKey);
 
   const subject = applyMerge(template.subject, contact);
   const body    = applyMerge(template.body,    contact);
+  const toName  = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.entity || '';
 
-  await transporter.sendMail({
-    from,
-    replyTo,
-    to:      `${contact.first_name || ''} ${contact.last_name || ''} <${contact.email}>`.trim(),
+  await resend.emails.send({
+    from:     `${fromName} <${fromEmail}>`,
+    reply_to: replyTo,
+    to:       toName ? `${toName} <${contact.email}>` : contact.email,
     subject,
-    text: body,
-    html: body.replace(/\n/g, '<br>'),
+    text:     body,
+    html:     body.replace(/\n/g, '<br>'),
   });
 }
 
