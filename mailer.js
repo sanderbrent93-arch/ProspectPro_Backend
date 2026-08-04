@@ -15,7 +15,7 @@ function applyMerge(text, contact) {
     .replace(/\{\{email\}\}/g,     contact.email      || '');
 }
 
-async function sendEmail(contact, template) {
+async function sendEmail(contact, template, { firstMessageId } = {}) {
   const apiKey     = process.env.RESEND_API_KEY || getSetting('resendApiKey');
   const senderName = process.env.SENDER_NAME    || getSetting('senderName') || 'Mako Solar & Exterior Cleaning';
   const fromEmail  = process.env.FROM_EMAIL     || getSetting('fromEmail')  || 'contact@makoclean.com';
@@ -29,16 +29,27 @@ async function sendEmail(contact, template) {
   const body    = applyMerge(template.body,    contact);
   const toName  = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
 
-  const { error } = await resend.emails.send({
+  const payload = {
     from:     `${senderName} <${fromEmail}>`,
     reply_to: replyTo,
     to:       toName ? `${toName} <${contact.email}>` : contact.email,
     subject,
     text: body,
     html: body.replace(/\n/g, '<br>'),
-  });
+  };
 
+  // Thread follow-ups onto the original email
+  if (firstMessageId) {
+    payload.headers = {
+      'In-Reply-To': firstMessageId,
+      'References':  firstMessageId,
+    };
+  }
+
+  const { data, error } = await resend.emails.send(payload);
   if (error) throw new Error(error.message);
+
+  return data?.id ? `<${data.id}@resend.dev>` : null;
 }
 
 module.exports = { sendEmail, getSetting };

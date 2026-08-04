@@ -69,5 +69,6 @@ db.exec(`
 try { db.exec(`ALTER TABLE enrollments ADD COLUMN responded_at TEXT`); } catch(_) {}
 try { db.exec(`ALTER TABLE enrollments ADD COLUMN step_schedule_json TEXT`); } catch(_) {}
 try { db.exec(`ALTER TABLE enrollments ADD COLUMN customizations_json TEXT`); } catch(_) {}
+try { db.exec(`ALTER TABLE enrollments ADD COLUMN first_message_id TEXT`); } catch(_) {}
 
 module.exports = db;

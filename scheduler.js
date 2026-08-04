@@ -84,9 +84,10 @@ async function processDue() {
       continue;
     }
 
-    let status = 'sent', error = null;
+    let status = 'sent', error = null, returnedMessageId = null;
     try {
-      await sendEmail(contact, template);
+      const firstMessageId = enrollment.current_step > 0 ? enrollment.first_message_id : null;
+      returnedMessageId = await sendEmail(contact, template, { firstMessageId });
       console.log(`✓ [${new Date().toISOString()}] Sent "${step.label}" to ${contact.email}`);
     } catch (e) {
       status = 'error';
@@ -105,13 +106,17 @@ async function processDue() {
     const completed = JSON.parse(enrollment.completed_steps);
     completed.push({ step: enrollment.current_step, templateId: step.templateId, sentAt: new Date().toISOString() });
 
+    // Save message ID from step 0 so follow-ups can thread onto it
+    const firstMessageId = enrollment.current_step === 0 && returnedMessageId
+      ? returnedMessageId
+      : enrollment.first_message_id;
+
     if (nextStep >= steps.length) {
-      db.prepare("UPDATE enrollments SET status='completed', completed_steps=? WHERE contact_key=?")
-        .run(JSON.stringify(completed), enrollment.contact_key);
+      db.prepare("UPDATE enrollments SET status='completed', completed_steps=?, first_message_id=? WHERE contact_key=?")
+        .run(JSON.stringify(completed), firstMessageId, enrollment.contact_key);
       console.log(`✓ Sequence complete for ${contact.email}`);
     } else {
       const nextS = steps[nextStep];
-      // Use pre-set schedule date if available; fall back to daysAfterPrev
       let nextDate = addDays(todayISO(), nextS.daysAfterPrev || 0);
       let nextTime = nextS.sendTime || '09:00';
       if (enrollment.step_schedule_json) {
@@ -123,8 +128,8 @@ async function processDue() {
           }
         } catch (_) {}
       }
-      db.prepare(`UPDATE enrollments SET current_step=?, next_due_at=?, next_due_time=?, completed_steps=? WHERE contact_key=?`)
-        .run(nextStep, nextDate, nextTime, JSON.stringify(completed), enrollment.contact_key);
+      db.prepare(`UPDATE enrollments SET current_step=?, next_due_at=?, next_due_time=?, completed_steps=?, first_message_id=? WHERE contact_key=?`)
+        .run(nextStep, nextDate, nextTime, JSON.stringify(completed), firstMessageId, enrollment.contact_key);
     }
   }
 }
