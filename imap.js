@@ -2,9 +2,9 @@ const { ImapFlow } = require('imapflow');
 const db = require('./db');
 
 async function checkReplies() {
-  const gmailUser = db.prepare("SELECT value FROM settings WHERE key='gmailUser'").get()?.value;
-  const gmailPass = db.prepare("SELECT value FROM settings WHERE key='gmailAppPassword'").get()?.value;
-  if (!gmailUser || !gmailPass) return;
+  const gmailUser = process.env.GMAIL_USER        || db.prepare("SELECT value FROM settings WHERE key='gmailUser'").get()?.value;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD || db.prepare("SELECT value FROM settings WHERE key='gmailAppPassword'").get()?.value;
+  if (!gmailUser || !gmailPass) { console.error('[IMAP] Gmail credentials not configured'); return; }
 
   // Only check contacts we've actually sent at least one email to
   const rows = db.prepare(`
