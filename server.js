@@ -115,16 +115,47 @@ app.post('/api/enroll', (req, res) => {
   const schedJson = stepSchedule ? JSON.stringify(stepSchedule) : null;
   const custJson  = customizations ? JSON.stringify(customizations) : null;
 
-  const upsert = db.prepare(`INSERT OR REPLACE INTO enrollments
-    (contact_key, sequence_id, enrolled_at, current_step, next_due_at, next_due_time, completed_steps, status, step_schedule_json, customizations_json)
-    VALUES (?,?,?,0,?,?,?,?,?,?)`);
-
   const enrollAll = db.transaction(cs => {
     cs.forEach(c => {
       db.prepare(`INSERT OR REPLACE INTO contacts (key,first_name,last_name,entity,email,phone,mail,list_id)
                   VALUES (?,?,?,?,?,?,?,?)`)
         .run(c.key, c.firstName, c.lastName, c.entity, c.email, c.phone, c.mail, c.listId);
-      upsert.run(c.key, sequenceId, todayStr, firstDate, firstTime, '[]', 'active', schedJson, custJson);
+
+      // Don't overwrite an existing active/responded enrollment — just update the contact record
+      const existing = db.prepare("SELECT * FROM enrollments WHERE contact_key=?").get(c.key);
+      if (existing) return;
+
+      // Check if step 0 was already sent (e.g. was enrolled before backend was connected)
+      const sentSteps = db.prepare(
+        "SELECT step_index FROM send_log WHERE contact_key=? AND sequence_id=? AND status='sent' ORDER BY step_index"
+      ).all(c.key, sequenceId);
+
+      if (sentSteps.length > 0) {
+        // Already sent some steps — pick up from the next unsent step
+        const lastSent = sentSteps[sentSteps.length - 1].step_index;
+        const nextStep = lastSent + 1;
+        if (nextStep >= steps.length) {
+          // All steps already sent
+          db.prepare(`INSERT INTO enrollments
+            (contact_key, sequence_id, enrolled_at, current_step, next_due_at, next_due_time, completed_steps, status, step_schedule_json, customizations_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`)
+            .run(c.key, sequenceId, todayStr, lastSent, todayStr, '09:00', JSON.stringify(sentSteps.map(s => ({ step: s.step_index }))), 'completed', schedJson, custJson);
+        } else {
+          // Schedule the next unsent step
+          let nextDate = stepSchedule?.[nextStep]?.date || addDays(todayStr, steps[nextStep]?.daysAfterPrev || 3);
+          let nextTime = stepSchedule?.[nextStep]?.time || steps[nextStep]?.sendTime || '09:00';
+          db.prepare(`INSERT INTO enrollments
+            (contact_key, sequence_id, enrolled_at, current_step, next_due_at, next_due_time, completed_steps, status, step_schedule_json, customizations_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`)
+            .run(c.key, sequenceId, todayStr, nextStep, nextDate, nextTime, JSON.stringify(sentSteps.map(s => ({ step: s.step_index }))), 'active', schedJson, custJson);
+        }
+      } else {
+        // Never sent — enroll from step 0
+        db.prepare(`INSERT INTO enrollments
+          (contact_key, sequence_id, enrolled_at, current_step, next_due_at, next_due_time, completed_steps, status, step_schedule_json, customizations_json)
+          VALUES (?,?,?,0,?,?,?,?,?,?)`)
+          .run(c.key, sequenceId, todayStr, firstDate, firstTime, '[]', 'active', schedJson, custJson);
+      }
     });
   });
   enrollAll(contacts);
